@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "aiogram>=3.3.0",
     "openai>=1.63.1",
     "python-telegram-bot==20.7",
+    "slack-sdk>=3.34.0",
     "telegram>=0.0.1",
 ]

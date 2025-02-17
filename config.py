@@ -1,4 +1,5 @@
 import os
+from aiogram.enums import ParseMode
 
 # Bot Configuration
 TELEGRAM_TOKEN = '7935071641:AAE5zL3OwVzS-u0HSqx7w9WoSp9ZN-BZlrY'
@@ -14,7 +15,6 @@ REQUEST_WINDOW_SECONDS = 60
 
 # Message Configuration
 MAX_MESSAGE_LENGTH = 4096  # Telegram's limit
-DEFAULT_PARSE_MODE = 'Markdown'
 
 # Error Messages
 ERROR_MESSAGES = {
@@ -27,6 +27,6 @@ ERROR_MESSAGES = {
 WELCOME_MESSAGE = """
 Привет, {}! 👋
 
-Я бот с искусственным интеллектом, готовый помочь тебе.
+Я бот с искусственным интеллектом DeepSeek R1, готовый помочь тебе.
 Просто напиши мне сообщение, и я постараюсь ответить.
 """

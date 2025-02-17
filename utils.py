@@ -112,13 +112,13 @@ def format_ai_response(response: str) -> str:
     """Format AI response for Telegram message with thoughts as quotes."""
     thoughts, answer = clean_ai_response(response)
 
-    formatted_response = "*Ответ от DeepSeek R1:*\n\n"
+    formatted_response = "*Ответ от DeepSeek R1:* 🤖\n\n"
 
     if thoughts:
         # Форматируем мысли как цитату, добавляя '>' перед каждой строкой
         formatted_thoughts = '\n'.join(f">{line}" for line in thoughts.split('\n') if line.strip())
-        formatted_response += f"*Размышления:*\n{formatted_thoughts}\n\n"
+        formatted_response += f"*💭 Размышления:* 🤔\n{formatted_thoughts}\n\n"
 
-    formatted_response += f"*Ответ:*\n{clean_markdown(answer)}"
+    formatted_response += f"*📝 Ответ:* ✅\n{clean_markdown(answer)}"
 
     return formatted_response

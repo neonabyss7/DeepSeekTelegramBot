@@ -1,13 +1,11 @@
 import asyncio
+import logging
 import sys
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes
-)
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.types import Message
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
 from openai import OpenAI
 import re
 import os
@@ -58,34 +56,30 @@ def cleanup():
     except OSError as e:
         logger.error(f"Ошибка при удалении PID файла: {e}")
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle errors in the telegram-python-bot library."""
-    logger.error(f"Произошла ошибка при обработке обновления: {context.error}")
-    if update and hasattr(update, 'effective_message'):
-        await update.effective_message.reply_text(
-            ERROR_MESSAGES['general_error'],
-            parse_mode=DEFAULT_PARSE_MODE
-        )
+# Инициализация бота и диспетчера с новым способом установки параметров
+default = DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
+bot = Bot(token=TELEGRAM_TOKEN, default=default)
+dp = Dispatcher()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
     """Handle the /start command."""
-    user = update.effective_user
-    await update.message.reply_text(
-        WELCOME_MESSAGE.format(user.first_name),
-        parse_mode=DEFAULT_PARSE_MODE
+    user = message.from_user
+    await message.answer(
+        WELCOME_MESSAGE.format(user.first_name)
     )
     logger.info(f"Новый пользователь запустил бота: {user.id}")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@dp.message()
+async def handle_message(message: Message):
     """Handle user messages and interact with the AI."""
-    user_id = update.effective_user.id
-    message_text = update.message.text
+    user_id = message.from_user.id
+    message_text = message.text
 
     # Check rate limit
     if rate_limiter.is_rate_limited(user_id):
-        await update.message.reply_text(
-            ERROR_MESSAGES['rate_limit'],
-            parse_mode=DEFAULT_PARSE_MODE
+        await message.answer(
+            ERROR_MESSAGES['rate_limit']
         )
         return
 
@@ -93,7 +87,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         # Send typing action
-        await update.message.chat.send_action("typing")
+        await bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
         # Get AI response
         completion = client.chat.completions.create(
@@ -109,9 +103,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         cleaned_response = re.sub(r'<.*?>', '', ai_response).strip()
 
         if not cleaned_response:
-            await update.message.reply_text(
-                ERROR_MESSAGES['empty_response'],
-                parse_mode=DEFAULT_PARSE_MODE
+            await message.answer(
+                ERROR_MESSAGES['empty_response']
             )
             return
 
@@ -121,58 +114,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         # Send response chunks
         for chunk in response_chunks:
-            await update.message.reply_text(
-                chunk,
-                parse_mode=DEFAULT_PARSE_MODE
-            )
+            await message.answer(chunk)
 
         logger.info(f"Успешно отправлен ответ пользователю {user_id}")
 
     except Exception as e:
         error_message = f"Ошибка обработки сообщения: {str(e)}"
         logger.error(error_message)
-        await update.message.reply_text(
-            ERROR_MESSAGES['general_error'],
-            parse_mode=DEFAULT_PARSE_MODE
+        await message.answer(
+            ERROR_MESSAGES['general_error']
         )
 
-def signal_handler(signum, frame):
-    """Handle termination signals."""
-    logger.info("Получен сигнал завершения, выключаю бота...")
-    cleanup()
-    sys.exit(0)
-
-def main() -> None:
+async def main():
     """Initialize and run the bot."""
     try:
         # Check for other instances
         check_single_instance()
 
-        # Set up signal handlers
+        # Set up signal handlers for cleanup
+        def signal_handler(signum, frame):
+            cleanup()
+            sys.exit(0)
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Initialize application
-        application = Application.builder().token(TELEGRAM_TOKEN).build()
-
-        # Add error handler
-        application.add_error_handler(error_handler)
-
-        # Add command handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            handle_message
-        ))
-
-        # Start the bot
+        # Start polling
         logger.info("Запуск бота...")
-        application.run_polling()
+        await dp.start_polling(bot)
 
     except Exception as e:
         logger.error(f"Фатальная ошибка: {str(e)}")
         cleanup()
         raise
+    finally:
+        await bot.session.close()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
