@@ -27,7 +27,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python bot.py"
+args = "OPENROUTER_API_KEY='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' python bot.py"
 
 [deployment]
-run = ["sh", "-c", "python bot.py"]
+run = ["sh", "-c", "OPENROUTER_API_KEY='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' python bot.py"]

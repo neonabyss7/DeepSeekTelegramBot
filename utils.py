@@ -1,33 +1,74 @@
 import time
 import re
 from functools import wraps
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 class RateLimiter:
-    def __init__(self, max_requests: int, time_window: int):
+    def __init__(self, max_requests: int, time_window: int, max_daily_requests: int = 200):
         self.max_requests = max_requests
         self.time_window = time_window
+        self.max_daily_requests = max_daily_requests
         self.requests: Dict[int, List[float]] = {}
+        self.daily_requests: Dict[int, List[float]] = {}
 
-    def is_rate_limited(self, user_id: int) -> bool:
+    def is_rate_limited(self, user_id: int) -> Tuple[bool, str]:
         """Check if a user has exceeded their rate limit."""
         current_time = time.time()
+        day_start = current_time - (current_time % 86400)  # Start of current day
 
+        # Initialize user records if not exist
         if user_id not in self.requests:
             self.requests[user_id] = []
+        if user_id not in self.daily_requests:
+            self.daily_requests[user_id] = []
 
-        # Remove old requests
+        # Clean up old requests
         self.requests[user_id] = [
             req_time for req_time in self.requests[user_id]
             if current_time - req_time < self.time_window
         ]
+        self.daily_requests[user_id] = [
+            req_time for req_time in self.daily_requests[user_id]
+            if req_time >= day_start
+        ]
 
-        # Check if user has exceeded rate limit
+        # Check minute limit
         if len(self.requests[user_id]) >= self.max_requests:
-            return True
+            return True, "minute"
 
+        # Check daily limit
+        if len(self.daily_requests[user_id]) >= self.max_daily_requests:
+            return True, "day"
+
+        # Add new request
         self.requests[user_id].append(current_time)
-        return False
+        self.daily_requests[user_id].append(current_time)
+        return False, ""
+
+    def get_remaining_quota(self, user_id: int) -> Dict[str, int]:
+        """Get remaining quota for both minute and daily limits."""
+        if user_id not in self.requests:
+            return {
+                "minute": self.max_requests,
+                "day": self.max_daily_requests
+            }
+
+        current_time = time.time()
+        day_start = current_time - (current_time % 86400)
+
+        minute_requests = len([
+            req_time for req_time in self.requests[user_id]
+            if current_time - req_time < self.time_window
+        ])
+        daily_requests = len([
+            req_time for req_time in self.daily_requests.get(user_id, [])
+            if req_time >= day_start
+        ])
+
+        return {
+            "minute": max(0, self.max_requests - minute_requests),
+            "day": max(0, self.max_daily_requests - daily_requests)
+        }
 
 def split_message(message: str, max_length: int = 4096) -> List[str]:
     """Split a message into chunks that respect Telegram's message length limit."""

@@ -1,0 +1,46 @@
+2025-02-17 16:51:16,726 - INFO - Проверка запущенных экземпляров бота...
+2025-02-17 16:51:16,726 - INFO - Найден устаревший PID файл (PID: 6011), можно продолжать
+2025-02-17 16:51:16,726 - INFO - Записываем текущий PID: 6100
+2025-02-17 16:51:16,727 - INFO - Запуск бота...
+2025-02-17 16:51:49,440 - INFO - Новый пользователь запустил бота: 645767853
+2025-02-17 16:51:58,877 - INFO - Получено сообщение от пользователя 645767853: сколько цветов у радуги?
+2025-02-17 16:51:59,058 - INFO - Отправка запроса к OpenRouter API для модели deepseek/deepseek-r1:free
+2025-02-17 16:51:59,058 - INFO - Параметры запроса: temperature=0.7, message_length=24
+2025-02-17 16:51:59,674 - INFO - Получен ответ от API: ChatCompletion(id=None, choices=None, created=None, model=None, object=None, service_tier=None, system_fingerprint=None, usage=None, error={'message': 'Rate limit exceeded: free-models-per-day', 'code': 429, 'metadata': {'headers': {'X-RateLimit-Limit': '200', 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1739836800000'}}})
+2025-02-17 16:51:59,675 - ERROR - Ответ API не содержит choices
+If applicable, propose a fix immediately.
+
+NA
+
+alikovdimon
+Assistant
+just now
+The error message indicates that you've exceeded the free model's daily rate limit for the OpenRouter API. To resolve this, you can either:
+
+Upgrade to a paid plan: This will provide you with more requests per day.
+Use a different model: Explore other OpenRouter models that may have different rate limits.
+Implement rate limiting: Add logic to your code to prevent sending requests to the API too frequently. You can use a counter or a timer to track the number of requests made and only send a request when a certain threshold has been reached.
+Here's how you could implement rate limiting in your code:
+
+import time
+# Set the maximum number of requests per minute
+max_requests_per_minute = 10
+# Initialize a counter to track the number of requests made
+request_count = 0
+# Set the last time a request was made
+last_request_time = time.time()
+# Function to send a request to the OpenRouter API
+def send_request():
+    global request_count, last_request_time
+    # Check if the rate limit has been exceeded
+    if request_count >= max_requests_per_minute:
+        # Calculate the time until the next request can be made
+        time_to_wait = 60 - (time.time() - last_request_time)
+        # Wait for the specified amount of time
+        time.sleep(time_to_wait)
+    # Increment the request counter
+    request_count += 1
+    # Update the last request time
+    last_request_time = time.time()
+    # Send the request to the OpenRouter API
+    # ...

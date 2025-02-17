@@ -16,7 +16,14 @@ from utils import RateLimiter, split_message, format_ai_response
 logger = setup_logger()
 
 # Initialize OpenAI client for OpenRouter
-client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=OPENROUTER_API_KEY)
+client = OpenAI(
+    base_url=OPENROUTER_BASE_URL,
+    api_key=OPENROUTER_API_KEY,
+    default_headers={
+        "HTTP-Referer": "https://github.com/OpenRouterTeam/openrouter-examples",
+        "X-Title": "Telegram DeepSeek Bot"
+    }
+)
 
 # Initialize rate limiter
 rate_limiter = RateLimiter(MAX_REQUESTS_PER_MINUTE, REQUEST_WINDOW_SECONDS)
@@ -76,10 +83,20 @@ async def handle_message(message: Message):
     message_text = message.text
 
     # Check rate limit
-    if rate_limiter.is_rate_limited(user_id):
+    is_limited, limit_type = rate_limiter.is_rate_limited(user_id)
+    if is_limited:
         await message.answer(
-            ERROR_MESSAGES['rate_limit']
+            ERROR_MESSAGES[f'rate_limit_{limit_type}']
         )
+
+        # Show remaining quota
+        quota = rate_limiter.get_remaining_quota(user_id)
+        if quota['day'] > 0:  # Only show minute quota if daily quota isn't exhausted
+            await message.answer(
+                f"*Осталось запросов:*\n"
+                f"• В минуту: {quota['minute']}\n"
+                f"• В день: {quota['day']}"
+            )
         return
 
     logger.info(f"Получено сообщение от пользователя {user_id}: {message_text}")
@@ -88,39 +105,71 @@ async def handle_message(message: Message):
         # Send typing action
         await bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
-        # Get AI response
-        completion = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=AI_MODEL,
-            messages=[
-                {"role": "system", "content": "Ты - полезный ассистент. Отвечай четко и по делу."},
-                {"role": "user", "content": message_text}
-            ],
-            temperature=0.7
-        )
+        try:
+            # Log API request parameters
+            logger.info(f"Отправка запроса к OpenRouter API для модели {AI_MODEL}")
+            logger.info(f"Параметры запроса: temperature={0.7}, message_length={len(message_text)}")
 
-        # Check response
-        if not completion or not completion.choices or not completion.choices[0].message:
-            logger.error("Получен некорректный ответ от API")
-            await message.answer(ERROR_MESSAGES['empty_response'])
-            return
+            # Get AI response
+            completion = await asyncio.to_thread(
+                client.chat.completions.create,
+                model=AI_MODEL,
+                messages=[
+                    {"role": "system", "content": "Ты - полезный ассистент. Отвечай четко и по делу."},
+                    {"role": "user", "content": message_text}
+                ],
+                temperature=0.7
+            )
 
-        # Process AI response
-        ai_response = completion.choices[0].message.content
-        if not ai_response or not isinstance(ai_response, str):
-            logger.error(f"Некорректный формат ответа: {ai_response}")
-            await message.answer(ERROR_MESSAGES['empty_response'])
-            return
+            # Log raw API response for debugging
+            logger.info(f"Получен ответ от API: {completion}")
 
-        # Format response
-        formatted_response = format_ai_response(ai_response)
-        response_chunks = split_message(formatted_response)
+            # Handle rate limit error
+            if hasattr(completion, 'error') and isinstance(completion.error, dict):
+                error_code = completion.error.get('code')
+                error_message = completion.error.get('message', '')
 
-        # Send response chunks
-        for chunk in response_chunks:
-            await message.answer(chunk)
+                if error_code == 429 and 'free-models-per-day' in error_message:
+                    logger.warning("Достигнут дневной лимит запросов к API")
+                    await message.answer(ERROR_MESSAGES['rate_limit_day'])
+                    return
 
-        logger.info(f"Успешно отправлен ответ пользователю {user_id}")
+            # Check response
+            if not completion or not completion.choices:
+                logger.error("Ответ API не содержит choices")
+                await message.answer(ERROR_MESSAGES['empty_response'])
+                return
+
+            if not completion.choices[0].message:
+                logger.error(f"Ответ API не содержит message в первом choice: {completion.choices[0]}")
+                await message.answer(ERROR_MESSAGES['empty_response'])
+                return
+
+            # Process AI response
+            ai_response = completion.choices[0].message.content
+            if not ai_response or not isinstance(ai_response, str):
+                logger.error(f"Некорректный формат ответа AI: {type(ai_response)}, значение: {ai_response}")
+                await message.answer(ERROR_MESSAGES['empty_response'])
+                return
+
+            logger.info(f"Успешно получен ответ AI длиной {len(ai_response)} символов")
+
+            # Format response
+            formatted_response = format_ai_response(ai_response)
+            response_chunks = split_message(formatted_response)
+
+            # Send response chunks
+            for chunk in response_chunks:
+                await message.answer(chunk)
+
+            logger.info(f"Успешно отправлен ответ пользователю {user_id}")
+
+        except Exception as e:
+            error_message = f"Ошибка обработки сообщения: {str(e)}"
+            logger.error(error_message)
+            await message.answer(
+                ERROR_MESSAGES['general_error']
+            )
 
     except Exception as e:
         error_message = f"Ошибка обработки сообщения: {str(e)}"
@@ -128,6 +177,8 @@ async def handle_message(message: Message):
         await message.answer(
             ERROR_MESSAGES['general_error']
         )
+
+
 
 async def main():
     """Initialize and run the bot."""
