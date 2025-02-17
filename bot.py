@@ -4,10 +4,7 @@ import sys
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import Message
-from aiogram.enums import ParseMode
-from aiogram.client.default import DefaultBotProperties
 from openai import OpenAI
-import re
 import os
 import signal
 
@@ -56,10 +53,12 @@ def cleanup():
     except OSError as e:
         logger.error(f"Ошибка при удалении PID файла: {e}")
 
-# Инициализация бота и диспетчера с новым способом установки параметров
-default = DefaultBotProperties(parse_mode=ParseMode.MARKDOWN)
-bot = Bot(token=TELEGRAM_TOKEN, default=default)
+# Initialize bot and dispatcher
 dp = Dispatcher()
+
+# Initialize bot with markdown parsing
+bot = Bot(token=TELEGRAM_TOKEN)
+bot._parse_mode = "markdown"
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
@@ -90,26 +89,31 @@ async def handle_message(message: Message):
         await bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
         # Get AI response
-        completion = client.chat.completions.create(
+        completion = await asyncio.to_thread(
+            client.chat.completions.create,
             model=AI_MODEL,
-            messages=[{"role": "user", "content": message_text}]
+            messages=[
+                {"role": "system", "content": "Ты - полезный ассистент. Отвечай четко и по делу."},
+                {"role": "user", "content": message_text}
+            ],
+            temperature=0.7
         )
 
-        if not completion.choices:
-            raise ValueError("Пустой ответ от ИИ")
+        # Check response
+        if not completion or not completion.choices or not completion.choices[0].message:
+            logger.error("Получен некорректный ответ от API")
+            await message.answer(ERROR_MESSAGES['empty_response'])
+            return
 
         # Process AI response
         ai_response = completion.choices[0].message.content
-        cleaned_response = re.sub(r'<.*?>', '', ai_response).strip()
-
-        if not cleaned_response:
-            await message.answer(
-                ERROR_MESSAGES['empty_response']
-            )
+        if not ai_response or not isinstance(ai_response, str):
+            logger.error(f"Некорректный формат ответа: {ai_response}")
+            await message.answer(ERROR_MESSAGES['empty_response'])
             return
 
-        # Format and split response if necessary
-        formatted_response = format_ai_response(cleaned_response)
+        # Format response
+        formatted_response = format_ai_response(ai_response)
         response_chunks = split_message(formatted_response)
 
         # Send response chunks

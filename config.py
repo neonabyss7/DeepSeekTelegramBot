@@ -1,5 +1,4 @@
 import os
-from aiogram.enums import ParseMode
 
 # Bot Configuration
 TELEGRAM_TOKEN = '7935071641:AAE5zL3OwVzS-u0HSqx7w9WoSp9ZN-BZlrY'
