@@ -1,7 +1,7 @@
 import os
 
 # Bot Configuration
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '7935071641:AAE5zL3OwVzS-u0HSqx7w9WoSp9ZN-BZlrY')
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ВАШ_ТОКЕН')
 OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
 
 # API Configuration
